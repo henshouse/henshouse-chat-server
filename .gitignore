@@ -1,3 +1,4 @@
 win-venv
+linux-venv
 __pycache__
 *.log
