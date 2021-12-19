@@ -1,0 +1,3 @@
+win-venv
+__pycache__
+*.log
