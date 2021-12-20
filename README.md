@@ -1,5 +1,7 @@
 # Henhouse chat
 
+#### Web client is online here: https://henshouse.github.io/client/
+
 ## Downloads
 * web client: https://github.com/henshouse/henshouse-chat-webclient/releases
 * CLI client: coming soon
