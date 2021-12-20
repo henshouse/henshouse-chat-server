@@ -2,3 +2,6 @@ win-venv
 linux-venv
 __pycache__
 *.log
+dist
+build
+*.spec
