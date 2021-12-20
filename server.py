@@ -15,6 +15,11 @@ from log import log_start, log
 # endregion
 
 
+class ServerFakeConn:
+    def __init__(self):
+        self.nick = '[SERVER]'
+
+
 class Server:
     def __init__(self, ip: str, port: int, max_conn: int = -1):
         self.ip = ip
@@ -24,11 +29,22 @@ class Server:
 
         self.running = True
         self.conns = []
+        self.conn = ServerFakeConn()
 
         self.local_asym = Asymmetric.new()
 
         log_start()
         asyncio.run(self.run_server())
+
+    async def run_command(self, sender: Connection, cmd: str, args: str) -> bool:
+        if cmd == 'nick':
+            nick = args.split(' ')[0]
+            if len(nick) == 0:
+                await sender.send_str_sym(f'{sender.nick}{NAME_SPLITTER}{self.conn.nick}{NAME_SPLITTER}Provide nick')
+            if len(nick) > 64:
+                await sender.send_str_sym(f'{sender.nick}{NAME_SPLITTER}{self.conn.nick}{NAME_SPLITTER}Nick too long (max 64)')
+            sender.nick = args.split(' ')[0]
+            return True
 
     def start_exit_thread(self):
         def quit_thread():
@@ -39,7 +55,7 @@ class Server:
                         os.kill(os.getpid(), signal.SIGINT)
                     elif cmd == 'help':
                         print(
-                            f'> enter any of "q", "quit", ":q", ":q!" or "exit" and press enter to quit')
+                            f'> enter any of "q", "quit", ":q", ":q!" or "exit" and press enter to quit (on linux do it twice, it\'s bug we are working on)')
                     else:
                         print(f'[!] Command unknown')
             except EOFError:
@@ -70,8 +86,11 @@ class Server:
         except Exception as e:
             log(e)
 
+    async def send_close(self, conn: Connection):
+        await self.send_to_all(f'{conn.nick} disconnected', self.conn)
+
     async def send_to_all(self, msg, author: Union[Connection, str]):
-        msg = (author.nick if isinstance(author, Connection)
+        msg = (author.nick if isinstance(author, Connection) or isinstance(author, ServerFakeConn)
                else author) + NAME_SPLITTER + msg
         to_remove = []
         for conn in self.conns:
@@ -86,7 +105,7 @@ class Server:
             await conn.close()
 
     async def send_to_all_raw(self, msg, author: Union[Connection, str]):
-        msg = (author.nick if isinstance(author, Connection)
+        msg = (author.nick if isinstance(author, Connection) or isinstance(author, ServerFakeConn)
                else author) + NAME_SPLITTER + msg
         to_remove = []
         for conn in self.conns:
@@ -103,11 +122,13 @@ class Server:
 
 def get_ip():
     import socket as sc
-    sock = sc.socket(sc.AF_INET, sc.SOCK_DGRAM)
-    sock.connect(("8.8.8.8", 80))
-    server = sock.getsockname()[0]
-    sock.close()
-    sleep(0.5)
+    try:
+        sock = sc.socket(sc.AF_INET, sc.SOCK_DGRAM)
+        sock.connect(("8.8.8.8", 80))
+        server = sock.getsockname()[0]
+        sock.close()
+    except:
+        return 'localhost'
     return server
 
 
