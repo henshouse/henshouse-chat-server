@@ -2,8 +2,8 @@ from threading import Thread
 import websockets as ws
 import asyncio
 
-from log import log_message, log_disconnect, log
-from security import Symmetric, Asymmetric, Hash
+from log import log_message, log_disconnect
+from security import Symmetric, Asymmetric
 from log import log_connect
 
 
@@ -52,7 +52,7 @@ class Connection:
 
     async def close(self, error: str = None):
         await self.ws.close()
-        await self.server.send_to_all(f'{self.nick} disconnected', '[server]')
+        await self.server.send_close(self)
         if error:
             log_disconnect(self.addr, self.nick, reason=f'Error: {error}')
         else:
@@ -68,12 +68,18 @@ class Connection:
             async for msg_en in self.ws:
                 msg = self.sym.decrypt(msg_en)
 
-                # check if /nick command
-                if msg.split(' ')[0] == '/nick' and len(msg.split(' ')) > 1:
-                    self.nick = msg.split(' ')[1]
-
-                await self.server.send_to_all(msg, self)
-                log_message(self.nick, self.addr, msg)
+                if len(msg):
+                    if msg[0] == '/':
+                        if len(msg[1:].split(' ')) > 0:
+                            cmd_by_space = msg[1:].split(' ')
+                            args = '' if len(cmd_by_space) == 1 else ' '.join(
+                                cmd_by_space[1:])
+                            print_to_all = await self.server.run_command(self, cmd_by_space[0], args)
+                            if print_to_all:
+                                await self.server.send_to_all(msg, self)
+                    else:
+                        await self.server.send_to_all(msg, self)
+                    log_message(self.nick, self.addr, msg)
         except ws.exceptions.ConnectionClosedOK as e:
             await self.close()
         except Exception as e:
