@@ -1,1 +1,1 @@
-pyinstaller --onefile --name='HenshouseChatServer'
+pyinstaller --onefile --name='HenshouseChatServer' server.py

@@ -15,7 +15,6 @@ class Connection:
         return conn
 
     def __init__(self, ws: ws.WebSocketServerProtocol, addr: str, server, nick: str):
-        Thread.__init__(self)
         self.ws = ws
         self.addr = addr
 
