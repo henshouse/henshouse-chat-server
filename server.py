@@ -7,9 +7,10 @@ import sys
 import asyncio
 from typing import Union
 import websockets as ws
+from hashlib import sha224
 
 from constants import NAME_SPLITTER, VERSION, PORT
-from connection import Connection
+from connection import Connection, FromServerMessage
 from security import Asymmetric
 from log import log_start, log
 import config as cfg
@@ -42,11 +43,11 @@ class Server:
         if cmd == "nick":
             nick = args.split(" ")[0]
             if len(nick) == 0:
-                await sender.send_sym(
+                await sender._send_sym(
                     f"{sender.nick}{NAME_SPLITTER}{self.server_fake_conn.nick}{NAME_SPLITTER}Provide nick"
                 )
             if len(nick) > 64:
-                await sender.send_sym(
+                await sender._send_sym(
                     f"{sender.nick}{NAME_SPLITTER}{self.server_fake_conn.nick}{NAME_SPLITTER}Nick too long (max 64)"
                 )
             sender.nick = args.split(" ")[0]
@@ -57,7 +58,8 @@ class Server:
 
         async def new_conn(wsock: ws.WebSocketServerProtocol):
             nonlocal n
-            nick = str(hex(id(wsock)))[2:7]
+            # nick = str(hex(id(wsock)))[2:7]
+            nick = sha224(str(id(wsock)).encode()).hexdigest()[:5]
             n += 1
             conn = Connection(wsock, wsock.remote_address[0], self, nick)
             self.conns.append(conn)
@@ -77,25 +79,18 @@ class Server:
             log(e)
 
     async def send_close(self, conn: Connection):
-        await self.send_to_all(f"{conn.nick} disconnected", self.server_fake_conn)
+        await self.send_msg_to_all(f"{conn.nick} disconnected", self.server_fake_conn)
 
-    async def send_to_all(self, msg, author: Union[Connection, str]):
-        msg = (
-            (
-                author.nick
-                if isinstance(author, Connection) or isinstance(author, ServerFakeConn)
-                else author
-            )
-            + NAME_SPLITTER
-            + msg
-        )
-
-        to_remove = []
+    async def send_msg_to_all(
+        self, msg: FromServerMessage, author: Union[Connection, str]
+    ):
+        to_remove: list[Connection] = []
         for conn in self.conns:
-            msg_with_user = conn.nick + NAME_SPLITTER + msg
             try:
-                await conn.send_sym(msg_with_user)
-            except ws.exceptions.ConnectionClosedOK:
+                await conn.resend_message(msg, author)
+            except ws.ConnectionClosedOK:
+                to_remove.append(conn)
+            except ws.ConnectionClosedError:
                 to_remove.append(conn)
 
         for conn in to_remove:
@@ -103,7 +98,7 @@ class Server:
                 self.conns.remove(conn)
             await conn.close()
 
-    async def send_to_all_raw(self, msg, author: Union[Connection, str]):
+    async def send_msg_to_all_raw(self, msg, author: Union[Connection, str]):
         msg = (
             (
                 author.nick

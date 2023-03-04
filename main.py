@@ -2,6 +2,8 @@ from constants import *
 from log import *
 import sys
 from server import get_ip, Server
+from termcolor import colored
+
 
 def run():
     import argparse
@@ -28,7 +30,9 @@ def run():
     _ip = get_ip()
 
     log(f"Running on {_ip}:{_port}")
-    log(f"Enter address: {_ip} and port: {_port} in client to connect")
+    log(
+        f"Enter address: {colored(_ip, 'red')} and port: {colored(_port, 'red')} in client to connect"
+    )
     Server(_ip, _port)
 
 

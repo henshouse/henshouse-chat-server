@@ -2,15 +2,32 @@ from __future__ import annotations
 from threading import Thread
 import websockets as ws
 import asyncio
+from json import loads as jloads, dumps as jdumps
 
-from log import log_message, log_disconnect
+from log import log_message, log_disconnect, log_connect
 from security import Symmetric, Asymmetric
-from log import log_connect
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, AsyncIterator, TypedDict, Literal
 
 if TYPE_CHECKING:
     from server import Server
+
+
+class ToServerMessage(TypedDict):
+    type: Literal["message"] | Literal["command"]
+    content: str | None
+    command: str | None
+
+
+class FromServerMessage(TypedDict):
+    type: Literal["message"] | Literal["command"]
+    content: str | None
+    command: str | None
+    command_args: str | None
+    author: str
+    author_id: int
+    recipient: str
+    recipient_id: int
 
 
 class Connection:
@@ -23,6 +40,7 @@ class Connection:
         self.server = server
 
         self.nick = nick
+        self.id = id(self)
         self.sym = Symmetric()
 
     async def send_plain(self, msg: bytes):
@@ -31,21 +49,65 @@ class Connection:
     async def recv_plain(self) -> bytes:
         return await self.ws.recv()
 
-    async def recv_asym(self) -> str:
+    async def _recv_asym(self) -> str:
         return self.server.local_asym.decrypt(await self.recv_plain())
 
-    async def send_asym(self, msg: str):
+    async def _send_asym(self, msg: str):
         return await self.send_plain(self.remote_asym.encrypt(msg))
 
-    async def send_bytes_asym(self, msg: bytes):
+    async def _send_bytes_asym(self, msg: bytes):
         return await self.send_plain(self.remote_asym.encrypt_bytes(msg))
 
-    async def recv_sym(self) -> str:
+    async def _recv_sym(self) -> str:
         return self.sym.decrypt(await self.recv_plain())
 
-    async def send_sym(self, msg: str):
+    async def _send_sym(self, msg: str):
         enc = self.sym.encrypt(msg)
         return await self.send_plain(enc)
+
+    async def send_message(self, msg_content: str, author: Connection):
+        msg: FromServerMessage = {
+            "type": "message",
+            "content": msg_content,
+            "author": author.nick,
+            "author_id": author.id,
+            "recipient": self.nick,
+            "recipient_id": self.id,
+        }
+
+        msg_str: str = jdumps(msg)
+        self._send_sym(msg_str)
+
+    async def send_executed_command(self, cmd: str, cmd_args: str, author: Connection):
+        msg: FromServerMessage = {
+            "type": "command",
+            "command": cmd,
+            "command_args": cmd_args,
+            "author": author.nick,
+            "author_id": author.id,
+            "recipient": self.nick,
+            "recipient_id": self.id,
+        }
+
+        msg_str: str = jdumps(msg)
+        self._send_sym(msg_str)
+
+    async def resend_message(self, msg: FromServerMessage, author: Connection):
+        msg.update(
+            {
+                "author": author.nick,
+                "author_id": author.id,
+                "recipient": self.nick,
+                "recipient_id": self.id,
+            }
+        )
+
+        msg_str: str = jdumps(msg)
+        await self._send_sym(msg_str)
+
+    async def recv_data(self) -> ToServerMessage:
+        data = await self._recv_sym()
+        return jloads(data)
 
     async def close(self, error: str = None):
         await self.ws.close()
@@ -55,37 +117,26 @@ class Connection:
         else:
             log_disconnect(self.addr, self.nick)
 
+    async def __aiter__(self) -> AsyncIterator[ToServerMessage]:
+        try:
+            while True:
+                yield await self.recv_data()
+        except ws.ConnectionClosedOK:
+            return
+
     async def run(self):
         try:
             key = self.server.local_asym.export_public()
             await self.send_plain(key)
             self.remote_asym = Asymmetric.import_from(await self.recv_plain())
-            await self.send_bytes_asym(self.sym.key)
+            await self._send_bytes_asym(self.sym.key)
             log_connect(self.addr, self.nick)
-            async for msg_en in self.ws:
-                msg = self.sym.decrypt(msg_en)
 
-                if not len(msg):
-                    return
-                
-                if msg[0] == "/":
-                    if len(msg[1:].split(" ")) > 0:
-                        commands_with_args = msg[1:].split(" ")
+            async for msg in self:
+                if msg["type"] == "message":
+                    await self.server.send_msg_to_all(msg, self)
+                    log_message(self.nick, self.addr, msg["content"])
 
-                        match commands_with_args:
-                            case [command]:
-                                command, args = command, ""
-                            case [command, *args]:
-                                command, args = command, " ".join(args)
-
-                        print_to_all = await self.server.run_command(
-                            self, commands_with_args[0], args
-                        )
-                        if print_to_all:
-                            await self.server.send_to_all(msg, self)
-                else:
-                    await self.server.send_to_all(msg, self)
-                log_message(self.nick, self.addr, msg)
         except ws.exceptions.ConnectionClosedOK as e:
             await self.close()
         except Exception as e:
