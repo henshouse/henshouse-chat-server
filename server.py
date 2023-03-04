@@ -29,7 +29,7 @@ class Server:
         self.max_conn = max_conn
 
         self.running = True
-        self.conns = []
+        self.conns: list[Connection] = []
         self.conn = ServerFakeConn()
 
         self.local_asym = Asymmetric.new()
@@ -41,11 +41,11 @@ class Server:
         if cmd == "nick":
             nick = args.split(" ")[0]
             if len(nick) == 0:
-                await sender.send_str_sym(
+                await sender.send_sym(
                     f"{sender.nick}{NAME_SPLITTER}{self.conn.nick}{NAME_SPLITTER}Provide nick"
                 )
             if len(nick) > 64:
-                await sender.send_str_sym(
+                await sender.send_sym(
                     f"{sender.nick}{NAME_SPLITTER}{self.conn.nick}{NAME_SPLITTER}Nick too long (max 64)"
                 )
             sender.nick = args.split(" ")[0]
@@ -56,7 +56,7 @@ class Server:
 
         async def new_conn(wsock: ws.WebSocketServerProtocol):
             nonlocal n
-            nick = str(n)
+            nick = str(id(wsock))[:5]
             n += 1
             conn = Connection(wsock, wsock.remote_address[0], self, nick)
             self.conns.append(conn)
@@ -93,7 +93,7 @@ class Server:
         for conn in self.conns:
             msg_with_user = conn.nick + NAME_SPLITTER + msg
             try:
-                await conn.send_str_sym(msg_with_user)
+                await conn.send_sym(msg_with_user)
             except ws.exceptions.ConnectionClosedOK:
                 to_remove.append(conn)
 
@@ -116,7 +116,7 @@ class Server:
         for conn in self.conns:
             msg_with_me = conn.nick + NAME_SPLITTER + msg
             try:
-                await conn.send(msg_with_me)
+                await conn.send_plain(msg_with_me)
             except ws.exceptions.ConnectionClosedOK:
                 to_remove.append(conn)
         for conn in to_remove:
