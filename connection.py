@@ -1,3 +1,4 @@
+from __future__ import annotations
 from threading import Thread
 import websockets as ws
 import asyncio
@@ -8,12 +9,6 @@ from log import log_connect
 
 
 class Connection:
-    @staticmethod
-    def new(sock, addr, server, n):
-        conn = Connection(sock, addr, server, n)
-        asyncio.ensure_future(conn.run())
-        return conn
-
     def __init__(self, ws: ws.WebSocketServerProtocol, addr: str, server, nick: str):
         self.ws = ws
         self.addr = addr
@@ -53,7 +48,7 @@ class Connection:
         await self.ws.close()
         await self.server.send_close(self)
         if error:
-            log_disconnect(self.addr, self.nick, reason=f'Error: {error}')
+            log_disconnect(self.addr, self.nick, reason=f"Error: {error}")
         else:
             log_disconnect(self.addr, self.nick)
 
@@ -68,12 +63,17 @@ class Connection:
                 msg = self.sym.decrypt(msg_en)
 
                 if len(msg):
-                    if msg[0] == '/':
-                        if len(msg[1:].split(' ')) > 0:
-                            cmd_by_space = msg[1:].split(' ')
-                            args = '' if len(cmd_by_space) == 1 else ' '.join(
-                                cmd_by_space[1:])
-                            print_to_all = await self.server.run_command(self, cmd_by_space[0], args)
+                    if msg[0] == "/":
+                        if len(msg[1:].split(" ")) > 0:
+                            cmd_by_space = msg[1:].split(" ")
+                            args = (
+                                ""
+                                if len(cmd_by_space) == 1
+                                else " ".join(cmd_by_space[1:])
+                            )
+                            print_to_all = await self.server.run_command(
+                                self, cmd_by_space[0], args
+                            )
                             if print_to_all:
                                 await self.server.send_to_all(msg, self)
                     else:
