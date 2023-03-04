@@ -51,24 +51,6 @@ class Server:
             sender.nick = args.split(" ")[0]
             return True
 
-    def start_exit_thread(self):
-        def quit_thread():
-            try:
-                while True:
-                    cmd = input("").lower()
-                    if cmd in ("q", "quit", ":q", ":q!", "exit"):
-                        os.kill(os.getpid(), signal.SIGINT)
-                    elif cmd == "help":
-                        print(
-                            f'> enter any of "q", "quit", ":q", ":q!" or "exit" and press enter to quit (on linux do it twice, it\'s bug we are working on)'
-                        )
-                    else:
-                        print(f"[!] Command unknown")
-            except EOFError:
-                os.kill(os.getpid(), signal.SIGINT)
-
-        Thread(target=quit_thread).start()
-
     async def run(self):
         n = 1
 
@@ -80,7 +62,7 @@ class Server:
             self.conns.append(conn)
             await conn.run()
 
-        self.start_exit_thread()
+        self._start_exit_thread()
 
         log(f"Server Running")
         log(f"Listening on port {self.port}")
@@ -141,6 +123,24 @@ class Server:
             if conn in self.conns:
                 self.conns.remove(conn)
             await conn.close()
+
+    def _start_exit_thread(self):
+        def quit_thread():
+            try:
+                while True:
+                    cmd = input("").lower()
+                    if cmd in ("q", "quit", ":q", ":q!", "exit"):
+                        os.kill(os.getpid(), signal.SIGINT)
+                    elif cmd == "help":
+                        print(
+                            f'> enter any of "q", "quit", ":q", ":q!" or "exit" and press enter to quit (on linux do it twice, it\'s bug we are working on)'
+                        )
+                    else:
+                        print(f"[!] Command unknown")
+            except EOFError:
+                os.kill(os.getpid(), signal.SIGINT)
+
+        Thread(target=quit_thread).start()
 
 
 def get_ip() -> str:
