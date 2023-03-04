@@ -1,3 +1,3 @@
 #!/bin/bash
 source linux-venv/bin/activate
-pyinstaller --onefile --name='HenshouseChatServer' server.py
+pyinstaller --onefile --name='HenshouseChatServer' main.py
