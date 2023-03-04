@@ -12,6 +12,7 @@ from constants import NAME_SPLITTER, VERSION, PORT
 from connection import Connection
 from security import Asymmetric
 from log import log_start, log
+import config as cfg
 
 # endregion
 
@@ -30,7 +31,7 @@ class Server:
 
         self.running = True
         self.conns: list[Connection] = []
-        self.conn = ServerFakeConn()
+        self.server_fake_conn = ServerFakeConn()
 
         self.local_asym = Asymmetric.new()
 
@@ -42,11 +43,11 @@ class Server:
             nick = args.split(" ")[0]
             if len(nick) == 0:
                 await sender.send_sym(
-                    f"{sender.nick}{NAME_SPLITTER}{self.conn.nick}{NAME_SPLITTER}Provide nick"
+                    f"{sender.nick}{NAME_SPLITTER}{self.server_fake_conn.nick}{NAME_SPLITTER}Provide nick"
                 )
             if len(nick) > 64:
                 await sender.send_sym(
-                    f"{sender.nick}{NAME_SPLITTER}{self.conn.nick}{NAME_SPLITTER}Nick too long (max 64)"
+                    f"{sender.nick}{NAME_SPLITTER}{self.server_fake_conn.nick}{NAME_SPLITTER}Nick too long (max 64)"
                 )
             sender.nick = args.split(" ")[0]
             return True
@@ -56,7 +57,7 @@ class Server:
 
         async def new_conn(wsock: ws.WebSocketServerProtocol):
             nonlocal n
-            nick = str(id(wsock))[:5]
+            nick = str(hex(id(wsock)))[2:7]
             n += 1
             conn = Connection(wsock, wsock.remote_address[0], self, nick)
             self.conns.append(conn)
@@ -76,7 +77,7 @@ class Server:
             log(e)
 
     async def send_close(self, conn: Connection):
-        await self.send_to_all(f"{conn.nick} disconnected", self.conn)
+        await self.send_to_all(f"{conn.nick} disconnected", self.server_fake_conn)
 
     async def send_to_all(self, msg, author: Union[Connection, str]):
         msg = (

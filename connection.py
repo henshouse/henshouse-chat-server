@@ -65,25 +65,27 @@ class Connection:
             async for msg_en in self.ws:
                 msg = self.sym.decrypt(msg_en)
 
-                if len(msg):
-                    if msg[0] == "/":
-                        if len(msg[1:].split(" ")) > 0:
-                            commands_with_args = msg[1:].split(" ")
+                if not len(msg):
+                    return
+                
+                if msg[0] == "/":
+                    if len(msg[1:].split(" ")) > 0:
+                        commands_with_args = msg[1:].split(" ")
 
-                            match commands_with_args:
-                                case [command]:
-                                    command, args = command, ""
-                                case [command, *args]:
-                                    command, args = command, " ".join(args)
+                        match commands_with_args:
+                            case [command]:
+                                command, args = command, ""
+                            case [command, *args]:
+                                command, args = command, " ".join(args)
 
-                            print_to_all = await self.server.run_command(
-                                self, commands_with_args[0], args
-                            )
-                            if print_to_all:
-                                await self.server.send_to_all(msg, self)
-                    else:
-                        await self.server.send_to_all(msg, self)
-                    log_message(self.nick, self.addr, msg)
+                        print_to_all = await self.server.run_command(
+                            self, commands_with_args[0], args
+                        )
+                        if print_to_all:
+                            await self.server.send_to_all(msg, self)
+                else:
+                    await self.server.send_to_all(msg, self)
+                log_message(self.nick, self.addr, msg)
         except ws.exceptions.ConnectionClosedOK as e:
             await self.close()
         except Exception as e:
