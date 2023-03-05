@@ -22,26 +22,32 @@ class Asymmetric:
 
         rsa_private_key = RSA.generate(2048)
         rsa_public_key = rsa_private_key.public_key()
-        key.private_key = PKCS1_OAEP.new(
-            rsa_private_key, SHA256)
-        key.public_key = PKCS1_OAEP.new(
-            rsa_public_key, SHA256)
+        key.private_key = PKCS1_OAEP.new(rsa_private_key, SHA256)
+        key.public_key = PKCS1_OAEP.new(rsa_public_key, SHA256)
         key.can_decrypt = True
 
         return key
 
     @staticmethod
-    def import_from(public: Union[PKCS1_OAEP.PKCS1OAEP_Cipher, bytes],
-                    private: Union[None, PKCS1_OAEP.PKCS1OAEP_Cipher, bytes] = None) -> Asymmetric:
+    def import_from(
+        public: Union[PKCS1_OAEP.PKCS1OAEP_Cipher, bytes],
+        private: Union[None, PKCS1_OAEP.PKCS1OAEP_Cipher, bytes] = None,
+    ) -> Asymmetric:
         key = Asymmetric()
 
         def new_pkcs(_key: PKCS1_OAEP.PKCS1OAEP_Cipher) -> PKCS1_OAEP.PKCS1OAEP_Cipher:
-            return PKCS1_OAEP.new(RSA.import_key(
-                _key), SHA256, lambda x, y: pss.MGF1(x, y, SHA256))
+            return PKCS1_OAEP.new(
+                RSA.import_key(_key), SHA256, lambda x, y: pss.MGF1(x, y, SHA256)
+            )
 
-        def get_key(_key: Union[PKCS1_OAEP.PKCS1OAEP_Cipher, bytes]) -> PKCS1_OAEP.PKCS1OAEP_Cipher:
-            return _key if isinstance(
-                _key, PKCS1_OAEP.PKCS1OAEP_Cipher) else new_pkcs(_key)
+        def get_key(
+            _key: Union[PKCS1_OAEP.PKCS1OAEP_Cipher, bytes]
+        ) -> PKCS1_OAEP.PKCS1OAEP_Cipher:
+            return (
+                _key
+                if isinstance(_key, PKCS1_OAEP.PKCS1OAEP_Cipher)
+                else new_pkcs(_key)
+            )
 
         key.public_key = get_key(public)
         key.can_decrypt = False
@@ -61,7 +67,7 @@ class Asymmetric:
         if self.can_decrypt:
             return self.private_key.decrypt(data).decode(encoding=cfg.get_encoding())
         else:
-            raise Exception('Cannot decrypt without private key')
+            raise Exception("Cannot decrypt without private key")
 
     def export_both(self) -> Tuple[Union[None, bytes], bytes]:
         if self.can_decrypt:
@@ -70,7 +76,7 @@ class Asymmetric:
             return (self.rsa_public_key.export_key(), None)
 
     def export_public(self) -> bytes:
-        return self.public_key._key.export_key('DER')
+        return self.public_key._key.export_key("DER")
 
 
 class Symmetric:
@@ -83,10 +89,9 @@ class Symmetric:
 
     def _create_new(self, nonce=None):
         if nonce:
-            self.aes = AES.new(self.key, cfg.get_aes_mode(), nonce=nonce)
+            self.aes: GcmMode = AES.new(self.key, cfg.get_aes_mode(), nonce=nonce)
         else:
-            self.aes = AES.new(self.key, cfg.get_aes_mode(),
-                               nonce=get_random_bytes(12))
+            self.aes = AES.new(self.key, cfg.get_aes_mode(), nonce=get_random_bytes(12))
 
     def encrypt(self, msg: str) -> bytes:
         """
@@ -98,7 +103,8 @@ class Symmetric:
         self._create_new()
 
         encrypted, tag = self.aes.encrypt_and_digest(
-            msg.encode(encoding=cfg.get_encoding()))
+            msg.encode(encoding=cfg.get_encoding())
+        )
         return self.aes.nonce + encrypted + tag
 
     def decrypt(self, data: bytes) -> str:
@@ -108,8 +114,9 @@ class Symmetric:
         # encryped = data[12+16:]
         tag = data[-16:]
         encrypted = data[12:-16]
-        msg = self.aes.decrypt_and_verify(
-            encrypted, tag).decode(encoding=cfg.get_encoding())
+        msg = self.aes.decrypt_and_verify(encrypted, tag).decode(
+            encoding=cfg.get_encoding()
+        )
         return msg
 
 
@@ -118,11 +125,14 @@ class Hash:
 
     @staticmethod
     def hash(msg: str) -> bytes:
-        blake = BLAKE2b.new(data=msg.encode(
-            encoding=cfg.get_encoding()), digest_bits=Hash.bits)
+        blake = BLAKE2b.new(
+            data=msg.encode(encoding=cfg.get_encoding()), digest_bits=Hash.bits
+        )
         return blake.digest()
 
     @staticmethod
     def hash_passwd(passwd: str) -> bytes:
         salt = urandom(cfg.get_scrypt_salt_size())
-        return salt + scrypt(passwd, salt, N=2**14, r=8, p=1, key_len=cfg.get_scrypt_key_len())
+        return salt + scrypt(
+            passwd, salt, N=2**14, r=8, p=1, key_len=cfg.get_scrypt_key_len()
+        )

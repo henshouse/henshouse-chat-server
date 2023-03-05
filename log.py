@@ -30,7 +30,7 @@ def log_connect(addr: Union[Tuple[str, int], str], nick: str):
         log(f'User {addr} ({nick}) connected', LogType.INFO)
 
 
-def log_disconnect(addr: Union[Tuple[str, int], str], nick: str, reason: str = None):
+def log_disconnect(addr: Union[Tuple[str, int], str], nick: str, reason: str | None = None):
     reason = '' if not reason else ', reason: ' + reason
     if isinstance(addr, str):
         log(f'User ({addr}) ({nick}) disconnected' + reason, LogType.INFO)
