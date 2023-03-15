@@ -31,7 +31,7 @@ def run():
 
     log(f"Running on {_ip}:{_port}")
     log(
-        f"Enter address: {colored(_ip, 'red')} and port: {colored(_port, 'red')} in client to connect"
+        f"Enter address: {colored(_ip, 'green')} and port: {colored(_port, 'green')} in client to connect"
     )
     Server(_ip, _port)
 

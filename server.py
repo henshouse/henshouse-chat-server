@@ -12,7 +12,7 @@ from hashlib import sha224
 from constants import NAME_SPLITTER, VERSION, PORT
 from connection import Connection, FromServerMessage
 from security import Asymmetric
-from log import log_start, log
+from log import log_message, log_start, log
 import config as cfg
 
 # endregion
@@ -21,6 +21,7 @@ import config as cfg
 class ServerFakeConn:
     def __init__(self):
         self.nick = "[SERVER]"
+        self.id = 0
 
 
 class Server:
@@ -32,7 +33,7 @@ class Server:
 
         self.running = True
         self.conns: list[Connection] = []
-        self.server_fake_conn = ServerFakeConn()
+        self.self_connection = ServerFakeConn()
 
         self.local_asym = Asymmetric.new()
 
@@ -41,27 +42,47 @@ class Server:
 
     async def run_command(self, sender: Connection, cmd: str, args: str) -> bool:
         if cmd == "nick":
+            old_nick = sender.nick
             nick = args.split(" ")[0]
             if len(nick) == 0:
-                await sender._send_sym(
-                    f"{sender.nick}{NAME_SPLITTER}{self.server_fake_conn.nick}{NAME_SPLITTER}Provide nick"
+                await sender.send_message("Nick reseted", self.self_connection)
+                sender.nick = sender.get
+                await self.send_msg_to_all(
+                    self.to_msg_by_server(f"{old_nick} changed nick to {sender.nick}"),
+                    self.self_connection,
                 )
+                log_message(
+                    self.self_connection.nick,
+                    self.self_connection.nick,
+                    f"{old_nick} changed nick to {sender.nick}",
+                )
+                return
             if len(nick) > 64:
-                await sender._send_sym(
-                    f"{sender.nick}{NAME_SPLITTER}{self.server_fake_conn.nick}{NAME_SPLITTER}Nick too long (max 64)"
+                await sender.send_message(
+                    "Nick too long (max 64)", self.self_connection
                 )
+                return
+
             sender.nick = args.split(" ")[0]
+            await self.send_msg_to_all(
+                self.to_msg_by_server(f"{old_nick} changed nick to {sender.nick}"),
+                self.self_connection,
+            )
+            log_message(
+                self.self_connection.nick,
+                self.self_connection.nick,
+                f"{old_nick} changed nick to {sender.nick}",
+            )
             return True
+        
+    async def notify_login(self, conn: Connection):
+        await self.send_msg_to_all(
+            self.to_msg_by_server(f"{conn.nick} connected"), self.self_connection
+        )
 
     async def run(self):
-        n = 1
-
         async def new_conn(wsock: ws.WebSocketServerProtocol):
-            nonlocal n
-            # nick = str(hex(id(wsock)))[2:7]
-            nick = sha224(str(id(wsock)).encode()).hexdigest()[:5]
-            n += 1
-            conn = Connection(wsock, wsock.remote_address[0], self, nick)
+            conn = Connection(wsock, wsock.remote_address[0], self)
             self.conns.append(conn)
             await conn.run()
 
@@ -78,16 +99,30 @@ class Server:
         except Exception as e:
             log(e)
 
+    def to_msg_by_server(self, msg: str) -> FromServerMessage:
+        return {
+            "type": "message",
+            "content": msg,
+            "author": self.self_connection.nick,
+            "author_id": 0,
+        }
+
     async def send_close(self, conn: Connection):
-        await self.send_msg_to_all(f"{conn.nick} disconnected", self.server_fake_conn)
+        await self.send_msg_to_all(
+            self.to_msg_by_server(f"{conn.nick} disconnected"), self.self_connection
+        )
 
     async def send_msg_to_all(
         self, msg: FromServerMessage, author: Union[Connection, str]
     ):
         to_remove: list[Connection] = []
         for conn in self.conns:
+            local_msg = msg.copy()
+            local_msg["recipient"] = conn.nick
+            local_msg["recipient_id"] = conn.id
+
             try:
-                await conn.resend_message(msg, author)
+                await conn.resend_message(local_msg, author)
             except ws.ConnectionClosedOK:
                 to_remove.append(conn)
             except ws.ConnectionClosedError:
@@ -98,34 +133,12 @@ class Server:
                 self.conns.remove(conn)
             await conn.close()
 
-    async def send_msg_to_all_raw(self, msg, author: Union[Connection, str]):
-        msg = (
-            (
-                author.nick
-                if isinstance(author, Connection) or isinstance(author, ServerFakeConn)
-                else author
-            )
-            + NAME_SPLITTER
-            + msg
-        )
-        to_remove = []
-        for conn in self.conns:
-            msg_with_me = conn.nick + NAME_SPLITTER + msg
-            try:
-                await conn.send_plain(msg_with_me)
-            except ws.exceptions.ConnectionClosedOK:
-                to_remove.append(conn)
-        for conn in to_remove:
-            if conn in self.conns:
-                self.conns.remove(conn)
-            await conn.close()
-
     def _start_exit_thread(self):
         def quit_thread():
             try:
                 while True:
                     cmd = input("").lower()
-                    if cmd in ("q", "quit", ":q", ":q!", "exit"):
+                    if cmd in ("q", "quit", ":q", ":q!", "exit", "stop"):
                         os.kill(os.getpid(), signal.SIGINT)
                     elif cmd == "help":
                         print(
